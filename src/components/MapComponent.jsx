@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { MapContainer, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import "leaflet-routing-machine";
@@ -9,14 +9,12 @@ import { Input } from "../components/ui/input";
 const defaultStart = [51.505, -0.09];
 const defaultEnd = [51.515, -0.1];
 
-const SwapButton = ({ swapLocations }) => (
-  <Button
-    onClick={swapLocations}
-    className="w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-purple-600 hover:to-pink-500 text-white font-semibold py-3 rounded-xl shadow-lg transition-transform hover:scale-105"
-  >
-    🔄 Swap Locations
-  </Button>
-);
+const customIcon = new L.Icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+  iconSize: [40, 40],
+  iconAnchor: [20, 40],
+  popupAnchor: [0, -35],
+});
 
 const MapView = ({ start, end }) => {
   const map = useMap();
@@ -53,9 +51,6 @@ const RoutePath = ({ start, end, setDistance }) => {
         profile: "car",
         suppressDemoServerWarning: true,
       }),
-      formatter: new L.Routing.Formatter({
-        instructions: false,
-      }),
       routeLine: (route) => {
         setDistance((route.summary.totalDistance / 1000).toFixed(2));
         return L.polyline(route.coordinates, {
@@ -65,9 +60,6 @@ const RoutePath = ({ start, end, setDistance }) => {
         });
       },
     }).addTo(map);
-
-    const container = routingControl.getContainer();
-    if (container) container.style.display = "none";
 
     return () => {
       map.removeControl(routingControl);
@@ -99,7 +91,6 @@ const MapComponent = () => {
   const [startInput, setStartInput] = useState("");
   const [endInput, setEndInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mapLoading, setMapLoading] = useState(false);
   const [distance, setDistance] = useState(null);
 
   const handleSwap = () => {
@@ -111,13 +102,33 @@ const MapComponent = () => {
 
   const handleLocationSubmit = async () => {
     setLoading(true);
-    setMapLoading(true); // Show loading overlay on the map
     const startCoords = await fetchCoordinates(startInput);
     const endCoords = await fetchCoordinates(endInput);
     if (startCoords) setStart(startCoords);
     if (endCoords) setEnd(endCoords);
     setLoading(false);
-    setTimeout(() => setMapLoading(false), 1000); // Hide after 1 sec
+  };
+
+  const handleLiveLocation = (type) => {
+    if ("geolocation" in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          const liveCoords = [position.coords.latitude, position.coords.longitude];
+          if (type === "start") {
+            setStart(liveCoords);
+            setStartInput("Your Live Location");
+          } else {
+            setEnd(liveCoords);
+            setEndInput("Your Live Location");
+          }
+        },
+        (error) => {
+          console.error("Error getting location:", error);
+        }
+      );
+    } else {
+      alert("Geolocation is not supported by your browser.");
+    }
   };
 
   return (
@@ -125,20 +136,36 @@ const MapComponent = () => {
       <div className="w-full max-w-lg p-6 bg-white bg-opacity-20 backdrop-blur-xl shadow-2xl rounded-2xl border border-gray-200 text-center mt-4">
         <h2 className="text-3xl font-bold text-white drop-shadow-lg mb-6">🌍 Explore Locations</h2>
         <div className="flex flex-col gap-4">
-          <Input
-            type="text"
-            placeholder="📍 Start Location"
-            value={startInput}
-            onChange={(e) => setStartInput(e.target.value)}
-            className="w-full p-4 bg-white bg-opacity-30 text-gray-900 border border-gray-300 rounded-lg shadow-md focus:ring-2 focus:ring-blue-400"
-          />
-          <Input
-            type="text"
-            placeholder="📌 Destination"
-            value={endInput}
-            onChange={(e) => setEndInput(e.target.value)}
-            className="w-full p-4 bg-white bg-opacity-30 text-gray-900 border border-gray-300 rounded-lg shadow-md focus:ring-2 focus:ring-blue-400"
-          />
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="📍 Start Location"
+              value={startInput}
+              onChange={(e) => setStartInput(e.target.value)}
+              className="w-full p-4 bg-white bg-opacity-30 text-gray-900 border border-gray-300 rounded-lg shadow-md focus:ring-2 focus:ring-blue-400"
+            />
+            <Button
+              onClick={() => handleLiveLocation("start")}
+              className="bg-blue-500 hover:bg-blue-700 text-white px-3 rounded-lg shadow-md"
+            >
+              📍 Live
+            </Button>
+          </div>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              placeholder="📌 Destination"
+              value={endInput}
+              onChange={(e) => setEndInput(e.target.value)}
+              className="w-full p-4 bg-white bg-opacity-30 text-gray-900 border border-gray-300 rounded-lg shadow-md focus:ring-2 focus:ring-blue-400"
+            />
+            <Button
+              onClick={() => handleLiveLocation("end")}
+              className="bg-blue-500 hover:bg-blue-700 text-white px-3 rounded-lg shadow-md"
+            >
+              📍 Live
+            </Button>
+          </div>
         </div>
         <div className="mt-4 flex flex-col gap-4">
           <Button
@@ -148,7 +175,12 @@ const MapComponent = () => {
           >
             {loading ? "⏳ Loading..." : "✅ Set Locations"}
           </Button>
-          <SwapButton swapLocations={handleSwap} />
+          <Button
+            onClick={handleSwap}
+            className="w-full bg-gradient-to-r from-pink-500 to-purple-600 hover:from-purple-600 hover:to-pink-500 text-white font-semibold py-3 rounded-xl shadow-lg transition-transform hover:scale-105"
+          >
+            🔄 Swap Locations
+          </Button>
         </div>
       </div>
 
@@ -158,18 +190,17 @@ const MapComponent = () => {
         </div>
       )}
 
-      <div className="relative w-full h-[600px] rounded-lg shadow-2xl border-4 border-white overflow-hidden max-w-5xl flex items-center justify-center">
-        {mapLoading && (
-          <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <span className="text-white text-2xl font-bold animate-pulse">🔄 Loading Map...</span>
-          </div>
-        )}
-        <MapContainer center={start} zoom={13} className="w-full h-full">
-          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap contributors' />
-          <MapView start={start} end={end} />
-          <RoutePath start={start} end={end} setDistance={setDistance} />
-        </MapContainer>
-      </div>
+      <MapContainer center={start} zoom={13} className="w-full h-[600px]">
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <Marker position={start} icon={customIcon}>
+          <Popup>Start Location</Popup>
+        </Marker>
+        <Marker position={end} icon={customIcon}>
+          <Popup>Destination</Popup>
+        </Marker>
+        <MapView start={start} end={end} />
+        <RoutePath start={start} end={end} setDistance={setDistance} />
+      </MapContainer>
     </div>
   );
 };
